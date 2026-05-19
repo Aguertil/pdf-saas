@@ -54,6 +54,12 @@ class TextEditRequest(BaseModel):
     page: int = Field(ge=0)
     old_text: str
     new_text: str
+    bbox: list[float] | None = Field(
+        default=None,
+        description="Zone [x0,y0,x1,y1] en coordonnées PDF",
+        min_length=4,
+        max_length=4,
+    )
 
 
 class FieldEditRequest(BaseModel):

@@ -62,37 +62,23 @@ def analyze_fonts(file_path: str) -> dict[str, Any]:
     return {"page_count": page_count, "pages": pages_meta}
 
 
-def replace_text_preserve_style(
-    file_path: str,
-    page_index: int,
-    old_text: str,
-    new_text: str,
-    add_watermark: bool = False,
-) -> None:
-    """Remplace du texte en réutilisant police et taille du span trouvé."""
-    doc = fitz.open(file_path)
-    if page_index < 0 or page_index >= len(doc):
-        doc.close()
-        raise ValueError("Page invalide")
 
-    page = doc[page_index]
-    instances = page.search_for(old_text)
-    if not instances:
-        doc.close()
-        raise ValueError(f"Texte introuvable: {old_text!r}")
 
-    # Récupérer style du premier span correspondant
+def _span_style_from_rect(page: fitz.Page, rect: fitz.Rect, old_text: str) -> tuple:
     font_name = "helv"
     font_size = 11.0
     color = (0, 0, 0)
-
     text_dict = page.get_text("dict")
     for block in text_dict.get("blocks", []):
         if block.get("type") != 0:
             continue
         for line in block.get("lines", []):
             for span in line.get("spans", []):
-                if old_text in span.get("text", ""):
+                sb = fitz.Rect(span.get("bbox"))
+                if not sb.intersects(rect):
+                    continue
+                span_text = span.get("text", "")
+                if old_text in span_text or span_text.strip() in old_text:
                     font_name = span.get("font", font_name)
                     font_size = span.get("size", font_size)
                     c = span.get("color", 0)
@@ -102,13 +88,31 @@ def replace_text_preserve_style(
                             ((c >> 8) & 255) / 255,
                             (c & 255) / 255,
                         )
-                    break
+                    return font_name, font_size, color
+    return font_name, font_size, color
 
-    for rect in instances:
+
+def replace_text_preserve_style(
+    file_path: str,
+    page_index: int,
+    old_text: str,
+    new_text: str,
+    add_watermark: bool = False,
+    bbox: list[float] | None = None,
+) -> None:
+    """Remplace du texte en réutilisant police et taille du span trouvé."""
+    doc = fitz.open(file_path)
+    if page_index < 0 or page_index >= len(doc):
+        doc.close()
+        raise ValueError("Page invalide")
+
+    page = doc[page_index]
+
+    if bbox and len(bbox) == 4:
+        rect = fitz.Rect(bbox)
+        font_name, font_size, color = _span_style_from_rect(page, rect, old_text)
         page.add_redact_annot(rect, fill=(1, 1, 1))
-    page.apply_redactions()
-
-    for rect in instances:
+        page.apply_redactions()
         page.insert_textbox(
             rect,
             new_text,
@@ -117,6 +121,27 @@ def replace_text_preserve_style(
             color=color,
             align=fitz.TEXT_ALIGN_LEFT,
         )
+    else:
+        instances = page.search_for(old_text)
+        if not instances:
+            doc.close()
+            raise ValueError(f"Texte introuvable: {old_text!r}")
+
+        font_name, font_size, color = _span_style_from_rect(page, instances[0], old_text)
+
+        for rect in instances:
+            page.add_redact_annot(rect, fill=(1, 1, 1))
+        page.apply_redactions()
+
+        for rect in instances:
+            page.insert_textbox(
+                rect,
+                new_text,
+                fontname=font_name,
+                fontsize=font_size,
+                color=color,
+                align=fitz.TEXT_ALIGN_LEFT,
+            )
 
     if add_watermark:
         _add_watermark(doc)

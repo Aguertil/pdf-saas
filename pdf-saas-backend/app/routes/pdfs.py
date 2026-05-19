@@ -110,6 +110,7 @@ def edit_text(
             body.old_text,
             body.new_text,
             add_watermark=False,
+            bbox=body.bbox,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

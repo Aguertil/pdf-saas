@@ -16,7 +16,18 @@ export interface DocumentItem {
   id: number;
   original_filename: string;
   page_count: number;
-  font_metadata?: { pages: Array<{ page: number; fonts: Array<{ font: string; size: number }> }> };
+  font_metadata?: {
+    pages: Array<{
+      page: number;
+      fonts: Array<{ font: string; size: number }>;
+      text_blocks?: Array<{
+        text: string;
+        font: string;
+        size: number;
+        bbox: [number, number, number, number];
+      }>;
+    }>;
+  };
   created_at: string;
 }
 
@@ -75,11 +86,17 @@ export async function uploadPdf(file: File): Promise<DocumentItem> {
   return res.json();
 }
 
-export async function editText(docId: number, page: number, old_text: string, new_text: string) {
+export async function editText(
+  docId: number,
+  page: number,
+  old_text: string,
+  new_text: string,
+  bbox?: [number, number, number, number],
+) {
   const res = await fetch(`${API}/pdfs/${docId}/edit-text`, {
     method: 'POST',
     headers: { ...authHeaders(), 'Content-Type': 'application/json' },
-    body: JSON.stringify({ page, old_text, new_text }),
+    body: JSON.stringify({ page, old_text, new_text, bbox }),
   });
   if (!res.ok) throw new Error((await res.json()).detail || 'Édition échouée');
   return res.json();
